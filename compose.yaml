@@ -1,0 +1,86 @@
+services:
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  temporal:
+    container_name: temporal
+    depends_on:
+      - db
+    environment:
+      - DB=postgres
+      - DB_PORT=5432
+      - POSTGRES_USER=myuser
+      - POSTGRES_PWD=mypassword
+      - POSTGRES_SEEDS=db
+      - "DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/config.yaml"
+      - "SERVICES=frontend:matching:history:internal-frontend:worker"
+      - "USE_INTERNAL_FRONTEND=true"
+      - "SKIP_DEFAULT_NAMESPACE_CREATION=false"
+      - "TEMPORAL_TLS_SERVER_CA_CERT=${TEMPORAL_TLS_CERTS_DIR}/ca.cert"
+      - "TEMPORAL_TLS_SERVER_CERT=${TEMPORAL_TLS_CERTS_DIR}/cluster.cert"
+      - "TEMPORAL_TLS_SERVER_KEY=${TEMPORAL_TLS_CERTS_DIR}/cluster.key"
+      - "TEMPORAL_TLS_REQUIRE_CLIENT_AUTH=true"
+      - "TEMPORAL_TLS_FRONTEND_CERT=${TEMPORAL_TLS_CERTS_DIR}/cluster.cert"
+      - "TEMPORAL_TLS_FRONTEND_KEY=${TEMPORAL_TLS_CERTS_DIR}/cluster.key"
+      - "TEMPORAL_TLS_CLIENT1_CA_CERT=${TEMPORAL_TLS_CERTS_DIR}/ca.cert"
+      - "TEMPORAL_TLS_CLIENT2_CA_CERT=${TEMPORAL_TLS_CERTS_DIR}/ca.cert"
+      - "TEMPORAL_TLS_INTERNODE_SERVER_NAME=flow-orchestrator"
+      - "TEMPORAL_TLS_FRONTEND_SERVER_NAME=flow-orchestrator"
+      - "TEMPORAL_TLS_FRONTEND_DISABLE_HOST_VERIFICATION=false"
+      - "TEMPORAL_TLS_INTERNODE_DISABLE_HOST_VERIFICATION=false"
+      - "TEMPORAL_CLI_ADDRESS=temporal:7236"
+      - "TEMPORAL_CLI_TLS_CA=${TEMPORAL_TLS_CERTS_DIR}/ca.cert"
+      - "TEMPORAL_CLI_TLS_CERT=${TEMPORAL_TLS_CERTS_DIR}/cluster.cert"
+      - "TEMPORAL_CLI_TLS_KEY=${TEMPORAL_TLS_CERTS_DIR}/cluster.key"
+      - "TEMPORAL_CLI_TLS_ENABLE_HOST_VERIFICATION=true"
+      - "TEMPORAL_CLI_TLS_SERVER_NAME=flow-orchestrator"
+      - TEMPORAL_CLI_SHOW_STACKS=1
+
+    image: temporalio/auto-setup:1.23
+    ports:
+      - 7233:7233
+    volumes:
+      - ${DYNAMIC_CONFIG_DIR:-./config}:/etc/temporal/config/dynamicconfig
+      - ${TEMPORAL_LOCAL_CERT_DIR}:${TEMPORAL_TLS_CERTS_DIR}
+    labels:
+      kompose.volume.type: configMap
+  temporal-ui:
+    image: temporalio/ui:${UI_TAG:-latest}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${TEMPORAL_LOCAL_CERT_DIR}:${TEMPORAL_TLS_CERTS_DIR}
+    environment:
+      - "TEMPORAL_ADDRESS=temporal:7233"
+      - "TEMPORAL_TLS_CA=${TEMPORAL_TLS_CERTS_DIR}/ca.cert"
+      - "TEMPORAL_TLS_CERT=${TEMPORAL_TLS_CERTS_DIR}/cluster.cert"
+      - "TEMPORAL_TLS_KEY=${TEMPORAL_TLS_CERTS_DIR}/cluster.key"
+      - "TEMPORAL_TLS_ENABLE_HOST_VERIFICATION=true"
+      - "TEMPORAL_TLS_SERVER_NAME=flow-orchestrator"
+    depends_on:
+      - temporal
+  temporal-admin-tools:
+    image: temporalio/admin-tools:${SERVER_TAG:-latest}
+    stdin_open: true
+    tty: true
+    volumes:
+      - ${TEMPORAL_LOCAL_CERT_DIR}:${TEMPORAL_TLS_CERTS_DIR}
+    environment:
+      - "TEMPORAL_CLI_ADDRESS=temporal:7236"
+      - "TEMPORAL_CLI_TLS_CA=${TEMPORAL_TLS_CERTS_DIR}/ca.cert"
+      - "TEMPORAL_CLI_TLS_CERT=${TEMPORAL_TLS_CERTS_DIR}/client.cert"
+      - "TEMPORAL_CLI_TLS_KEY=${TEMPORAL_TLS_CERTS_DIR}/client.key"
+      - "TEMPORAL_CLI_TLS_ENABLE_HOST_VERIFICATION=true"
+      - "TEMPORAL_CLI_TLS_SERVER_NAME=flow-orchestrator"
+    depends_on:
+      - temporal
+
+volumes:
+  db-data:
